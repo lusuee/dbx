@@ -7761,11 +7761,34 @@ const gridContextMenuItems = computed<ContextMenuItem[]>(() => {
   scrollbar-gutter: stable;
   will-change: scroll-position;
   contain: layout style paint;
-  scrollbar-width: none;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--foreground) 30%, transparent) transparent;
 }
 
 .data-grid-scroller::-webkit-scrollbar {
-  display: none;
+  width: 10px;
+  height: 0;
+}
+
+.data-grid-scroller::-webkit-scrollbar:horizontal {
+  height: 0;
+}
+
+.data-grid-scroller::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.data-grid-scroller::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--foreground) 30%, transparent);
+  background-clip: content-box;
+}
+
+.data-grid-scroller::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--foreground) 48%, transparent);
+  background-clip: content-box;
 }
 
 .data-grid-scroller :deep(.vue-recycle-scroller__item-wrapper) {
