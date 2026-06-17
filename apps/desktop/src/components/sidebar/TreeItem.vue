@@ -2096,7 +2096,7 @@ async function exportStructure() {
     const parts: string[] = [];
     for (const target of targets) {
       await connectionStore.ensureConnected(target.connectionId);
-      const ddl = await api.getTableDdl(target.connectionId, target.database, target.schema || target.database, target.label);
+      const ddl = await api.getTableDdl(target.connectionId, target.database, target.schema || target.database, target.label, target.type === "view" ? "VIEW" : undefined);
       parts.push(ddl.trim());
     }
     structurePreviewSql.value = `${parts.filter(Boolean).join("\n\n")}\n`;

@@ -728,7 +728,7 @@ async function confirmBatchDropTables() {
 async function exportStructure(row: ObjectBrowserRow) {
   try {
     const schema = row.schema || selectedSchema.value || props.database;
-    const ddl = await api.getTableDdl(props.connection.id, props.database, schema, row.name);
+    const ddl = await api.getTableDdl(props.connection.id, props.database, schema, row.name, row.type === "VIEW" ? "VIEW" : undefined);
     await saveFileContent(ddl + "\n", `${row.name}.sql`, "SQL", "sql");
   } catch (e: any) {
     console.error("Export structure failed:", e);

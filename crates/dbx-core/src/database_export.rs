@@ -383,6 +383,7 @@ pub async fn export_database_sql_core(
         None,
         None,
         None,
+        None,
     )
     .await?;
     let all_tables = filter_selected_table_infos(all_tables, &request.selected_tables);
@@ -476,6 +477,7 @@ pub async fn export_database_sql_core(
                 &request.database,
                 &request.schema,
                 table_name,
+                None,
             )
             .await
             {

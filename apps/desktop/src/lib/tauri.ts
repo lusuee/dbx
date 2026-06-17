@@ -486,8 +486,8 @@ export async function deleteSchemaCachePrefix(prefix: string): Promise<void> {
   return invoke("delete_schema_cache_prefix", { prefix });
 }
 
-export async function listTables(connectionId: string, database: string, schema: string, filter?: string, limit?: number, offset?: number): Promise<TableInfo[]> {
-  return invoke("list_tables", { connectionId, database, schema, filter, limit, offset });
+export async function listTables(connectionId: string, database: string, schema: string, filter?: string, limit?: number, offset?: number, objectTypes?: SidebarObjectKind[]): Promise<TableInfo[]> {
+  return invoke("list_tables", { connectionId, database, schema, filter, limit, offset, objectTypes });
 }
 
 export async function listObjects(connectionId: string, database: string, schema: string, objectTypes?: SidebarObjectKind[]): Promise<ObjectInfo[]> {
@@ -787,8 +787,8 @@ export async function listTriggers(connectionId: string, database: string, schem
   return invoke("list_triggers", { connectionId, database, schema, table });
 }
 
-export async function getTableDdl(connectionId: string, database: string, schema: string, table: string): Promise<string> {
-  return invoke("get_table_ddl", { connectionId, database, schema, table });
+export async function getTableDdl(connectionId: string, database: string, schema: string, table: string, objectType?: ObjectSourceKind): Promise<string> {
+  return invoke("get_table_ddl", { connectionId, database, schema, table, objectType });
 }
 
 export async function prepareSchemaDiff(options: SchemaDiffPreparationOptions): Promise<SchemaDiffPreparation> {

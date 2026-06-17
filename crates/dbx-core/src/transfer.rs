@@ -2746,6 +2746,7 @@ where
         Some(table),
         Some(1),
         None,
+        None,
     )
     .await
     .unwrap_or_default()
@@ -2760,6 +2761,7 @@ where
         &request.target_schema,
         Some(table),
         Some(1),
+        None,
         None,
     )
     .await
