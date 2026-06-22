@@ -15,11 +15,13 @@ import {
   mongoDocumentsToQueryResult,
   mongoIndexesToQueryResult,
   mongoWriteToQueryResult,
+  mongoUseToQueryResult,
   parseMongoAggregateCommand,
   parseMongoCountDocumentsCommand,
   parseMongoFindCommand,
   parseMongoGetIndexesCommand,
   parseMongoWriteCommand,
+  parseMongoUseCommand,
   type MongoAggregateSafetyOptions,
 } from "@/lib/mongoShellCommand";
 import { redisCommandResultToQueryResult } from "@/lib/redisQueryResult";
@@ -1535,6 +1537,32 @@ export const useQueryStore = defineStore("query", () => {
           current.resultSortedSql = options?.resultSortedSql;
           syncDisplayedResultRun(current, options?.resultBaseSql ?? sql);
         }
+        return;
+      }
+
+      const mongoUse = conn?.db_type === "mongodb" ? parseMongoUseCommand(sql) : null;
+      if (mongoUse) {
+        console.info("[DBX][executeTabSql:mongo-use:start]", { traceId, database: mongoUse.database });
+        const current = tabs.value.find((t) => t.id === id);
+        if (current?.executionId === executionId) {
+          current.database = mongoUse.database;
+          current.results = undefined;
+          current.activeResultIndex = undefined;
+          current.result = markQueryResultRowsRaw(mongoUseToQueryResult(mongoUse.database, performance.now() - startedAt));
+          touchResult(current);
+          current.queryAnalysis = undefined;
+          current.querySourceColumns = undefined;
+          current.queryEditabilityReason = undefined;
+          current.tableMeta = undefined;
+          current.resultBaseSql = options?.resultBaseSql ?? sql;
+          current.resultSortedSql = options?.resultSortedSql;
+          syncDisplayedResultRun(current, options?.resultBaseSql ?? sql);
+        }
+        console.info("[DBX][executeTabSql:mongo-use:done]", {
+          traceId,
+          database: mongoUse.database,
+          elapsed: elapsed(),
+        });
         return;
       }
 
