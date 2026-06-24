@@ -240,6 +240,7 @@ pub fn build_sorted_query_sql(options: SortedQuerySqlOptions) -> QuerySqlBuildRe
 
     let aliases = build_derived_column_aliases(&options.result_columns);
     let use_derived_column_aliases = options.database_type != Some(DatabaseType::Mysql)
+        && options.database_type != Some(DatabaseType::ClickHouse)
         && options.database_type != Some(DatabaseType::Sqlite)
         && options.database_type != Some(DatabaseType::DuckDb);
     let sort_alias = if use_derived_column_aliases {
@@ -1167,6 +1168,23 @@ mod tests {
         });
 
         assert_eq!(result.sql.unwrap(), "SELECT * FROM (SELECT * FROM admin LIMIT 100) t ORDER BY `login_name` ASC;");
+    }
+
+    #[test]
+    fn builds_clickhouse_sorted_query_without_alias_list() {
+        let result = build_sorted_query_sql(SortedQuerySqlOptions {
+            original_sql: "SELECT id, part_day, hid FROM events LIMIT 100".to_string(),
+            database_type: Some(DatabaseType::ClickHouse),
+            result_columns: vec!["id".to_string(), "part_day".to_string(), "hid".to_string()],
+            column_index: 0,
+            column: "id".to_string(),
+            direction: QuerySortDirection::Desc,
+        });
+
+        assert_eq!(
+            result.sql.unwrap(),
+            "SELECT * FROM (SELECT id, part_day, hid FROM events LIMIT 100) t ORDER BY `id` DESC;"
+        );
     }
 
     #[test]
