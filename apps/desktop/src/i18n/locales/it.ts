@@ -1887,6 +1887,7 @@ export default withEnglishFallback({
     collectionFallback: "collezione",
     productCollection: "Collezione {product}",
     browse: "Sfoglia",
+    search: "Cerca",
     upsert: "Upsert",
     delete: "Elimina",
     reset: "Reimposta",
@@ -1895,6 +1896,7 @@ export default withEnglishFallback({
     apply: "Applica",
     requestEditor: "Editor richieste vettoriali",
     operationSuccess: "Operazione completata. L'anteprima della collezione e stata aggiornata.",
+    vectorLabel: "Vettore",
   },
   history: {
     title: "Cronologia",

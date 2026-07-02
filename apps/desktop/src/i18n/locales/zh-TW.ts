@@ -1771,6 +1771,7 @@ export default withEnglishFallback({
     collectionFallback: "集合",
     productCollection: "{product} 集合",
     browse: "瀏覽",
+    search: "搜尋",
     upsert: "寫入",
     delete: "刪除",
     reset: "重設",
@@ -1779,6 +1780,7 @@ export default withEnglishFallback({
     apply: "套用",
     requestEditor: "向量請求編輯器",
     operationSuccess: "操作已完成，集合預覽已重新整理。",
+    vectorLabel: "向量",
   },
   history: {
     title: "歷史",

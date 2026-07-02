@@ -1889,6 +1889,7 @@ export default withEnglishFallback({
     collectionFallback: "集合",
     productCollection: "{product} 集合",
     browse: "浏览",
+    search: "搜索",
     upsert: "写入",
     delete: "删除",
     reset: "重置",
@@ -1897,6 +1898,7 @@ export default withEnglishFallback({
     apply: "应用",
     requestEditor: "向量请求编辑器",
     operationSuccess: "操作已完成，集合预览已刷新。",
+    vectorLabel: "向量",
   },
   history: {
     title: "历史",

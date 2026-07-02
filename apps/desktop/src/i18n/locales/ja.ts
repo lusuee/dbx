@@ -1868,6 +1868,7 @@ export default withEnglishFallback({
     collectionFallback: "コレクション",
     productCollection: "{product} コレクション",
     browse: "参照",
+    search: "検索",
     upsert: "Upsert",
     delete: "削除",
     reset: "リセット",
@@ -1876,6 +1877,7 @@ export default withEnglishFallback({
     apply: "適用",
     requestEditor: "ベクターリクエストエディタ",
     operationSuccess: "操作が完了しました。コレクションプレビューが更新されました。",
+    vectorLabel: "ベクトル",
   },
   history: {
     title: "履歴",

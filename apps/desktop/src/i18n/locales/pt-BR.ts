@@ -1879,6 +1879,7 @@ export default withEnglishFallback({
     collectionFallback: "coleção",
     productCollection: "coleção {product}",
     browse: "Navegar",
+    search: "Pesquisar",
     upsert: "Upsert",
     delete: "Excluir",
     reset: "Redefinir",
@@ -1887,6 +1888,7 @@ export default withEnglishFallback({
     apply: "Aplicar",
     requestEditor: "Editor de requisição de vetor",
     operationSuccess: "Operação concluída. A pré-visualização da coleção foi atualizada.",
+    vectorLabel: "Vetor",
   },
   history: {
     title: "Histórico",
