@@ -130,10 +130,6 @@ pub fn build_query_pagination_execution_plan(
         return plan;
     }
 
-    if options.database_type == Some(DatabaseType::SqlServer) && starts_with_cte(&options.query_base_sql) {
-        return plan;
-    }
-
     if options.use_agent_cursor && options.pagination.offset == 0 {
         if !options.first_page_uses_actual_sql {
             plan.sql_to_execute = options.query_base_sql;
@@ -183,6 +179,12 @@ pub fn build_paginated_query_sql(options: PaginatedQuerySqlOptions) -> QuerySqlB
         return ok(format!("{statement} LIMIT {safe_limit} OFFSET {safe_offset};"));
     }
 
+    if options.database_type == Some(DatabaseType::SqlServer) && starts_with_cte(&statement) {
+        return add_sql_server_cte_pagination(&statement, safe_limit, safe_offset)
+            .map(ok)
+            .unwrap_or_else(|| err("unsupported"));
+    }
+
     match pagination_strategy(options.database_type, PaginationContext::UserQuery) {
         TablePaginationStrategy::SqlServerTop => add_sql_server_offset_fetch(&statement, safe_limit, safe_offset)
             .map(ok)
@@ -218,6 +220,9 @@ pub fn build_count_query_sql(options: CountQuerySqlOptions) -> QuerySqlBuildResu
 
     let alias = quote_table_identifier(options.database_type, "dbx_count");
     let wrapped_sql = if options.database_type == Some(DatabaseType::SqlServer) {
+        if let Some(sql) = build_sql_server_cte_count_sql(&statement, &alias) {
+            return ok(sql);
+        }
         sql_server_statement_for_derived_table(&statement)
     } else {
         statement
@@ -335,21 +340,27 @@ fn single_statement_matches_base_sql(statement: &str, base_sql: &str) -> bool {
     if normalized_statement.len() == normalized_base.len() {
         return true;
     }
+    let normalized_base = trim_leading_empty_statements(normalized_base).trim_end_matches(';').trim();
+    if normalized_statement == normalized_base {
+        return true;
+    }
     let base_without_leading_comments =
         strip_leading_statement_comments(normalized_base).trim().trim_end_matches(';').trim();
     normalized_statement == base_without_leading_comments
 }
 
 fn starts_with_cte(sql: &str) -> bool {
-    sql.trim_start().trim_start_matches(';').trim_start().to_ascii_uppercase().starts_with("WITH")
+    let sql = strip_leading_statement_comments(trim_leading_empty_statements(sql));
+    trim_leading_empty_statements(sql).to_ascii_uppercase().starts_with("WITH")
 }
 
 fn cte_main_statement_is_select(sql: &str) -> bool {
     let tokens = top_level_sql_tokens(sql);
-    let mut index = match tokens.iter().position(|token| token.text == "WITH") {
-        Some(index) => index + 1,
-        None => return false,
-    };
+    cte_main_statement_token(&tokens).is_some_and(|token| token.text == "SELECT")
+}
+
+fn cte_main_statement_token(tokens: &[SqlToken]) -> Option<&SqlToken> {
+    let mut index = tokens.iter().position(|token| token.text == "WITH")? + 1;
 
     if tokens.get(index).is_some_and(|token| token.text == "RECURSIVE") {
         index += 1;
@@ -357,15 +368,23 @@ fn cte_main_statement_is_select(sql: &str) -> bool {
 
     while let Some(token) = tokens.get(index) {
         if is_with_main_statement_keyword(&token.text) {
-            return token.text == "SELECT";
+            return Some(token);
         }
         index += 1;
     }
-    false
+    None
 }
 
 fn is_with_main_statement_keyword(token: &str) -> bool {
     matches!(token, "SELECT" | "INSERT" | "UPDATE" | "DELETE" | "MERGE")
+}
+
+fn trim_leading_empty_statements(sql: &str) -> &str {
+    let mut rest = sql.trim_start();
+    while let Some(next) = rest.strip_prefix(';') {
+        rest = next.trim_start();
+    }
+    rest
 }
 
 fn single_statement_error_reason(original_sql: &str) -> &'static str {
@@ -426,6 +445,72 @@ fn add_sql_server_offset_fetch(statement: &str, limit: usize, offset: usize) -> 
     Some(format!(
         "SELECT * FROM (SELECT dbx_page_source.*, ROW_NUMBER() OVER ({row_number_order}) AS [__dbx_row_num] FROM ({statement_without_order}) dbx_page_source) dbx_page WHERE [__dbx_row_num] > {offset} AND [__dbx_row_num] <= {end} ORDER BY [__dbx_row_num];"
     ))
+}
+
+struct SqlServerCteSelectParts<'a> {
+    prefix: &'a str,
+    main_select: &'a str,
+}
+
+fn sql_server_cte_select_parts(statement: &str) -> Option<SqlServerCteSelectParts<'_>> {
+    if !starts_with_cte(statement) {
+        return None;
+    }
+    let tokens = top_level_sql_tokens(statement);
+    let main_token = cte_main_statement_token(&tokens)?;
+    if main_token.text != "SELECT" {
+        return None;
+    }
+    let prefix = &statement[..main_token.start];
+    let main_select = statement[main_token.start..].trim_start();
+    if prefix.trim().is_empty() || main_select.is_empty() {
+        return None;
+    }
+    Some(SqlServerCteSelectParts { prefix, main_select })
+}
+
+fn add_sql_server_cte_pagination(statement: &str, limit: usize, offset: usize) -> Option<String> {
+    let parts = sql_server_cte_select_parts(statement)?;
+    let page_main = add_sql_server_offset_fetch(parts.main_select, limit, offset)
+        .or_else(|| add_sql_server_cte_row_number_pagination(parts.main_select, limit, offset))?;
+    Some(prepend_sql_server_cte_prefix(parts.prefix, &page_main))
+}
+
+fn add_sql_server_cte_row_number_pagination(statement: &str, limit: usize, offset: usize) -> Option<String> {
+    if offset == 0 || has_top_level_offset_fetch_next(statement) {
+        return None;
+    }
+
+    let order_by_index = find_top_level_trailing_order_by(statement);
+    if order_by_index.is_none() && has_top_level_select_distinct(statement) {
+        return None;
+    }
+
+    let statement_without_order = order_by_index.map(|index| statement[..index].trim_end()).unwrap_or(statement);
+    let row_number_order = order_by_index
+        .map(|index| statement[index..].trim().to_string())
+        .unwrap_or_else(|| "ORDER BY (SELECT NULL)".to_string());
+    let end = offset + limit;
+    Some(format!(
+        "SELECT * FROM (SELECT dbx_page_source.*, ROW_NUMBER() OVER ({row_number_order}) AS [__dbx_row_num] FROM ({statement_without_order}) dbx_page_source) dbx_page WHERE [__dbx_row_num] > {offset} AND [__dbx_row_num] <= {end} ORDER BY [__dbx_row_num];"
+    ))
+}
+
+fn build_sql_server_cte_count_sql(statement: &str, alias: &str) -> Option<String> {
+    let parts = sql_server_cte_select_parts(statement)?;
+    let wrapped_main = sql_server_statement_for_derived_table(parts.main_select);
+    let count_main =
+        derived_table_sql("SELECT COUNT(*) AS dbx_total_rows FROM", &wrapped_main, &format!("{alias};"));
+    Some(prepend_sql_server_cte_prefix(parts.prefix, &count_main))
+}
+
+fn prepend_sql_server_cte_prefix(prefix: &str, statement: &str) -> String {
+    let separator = if prefix.chars().last().is_some_and(char::is_whitespace) {
+        ""
+    } else {
+        " "
+    };
+    format!("{prefix}{separator}{}", statement.trim_start())
 }
 
 fn add_sql_server_existing_top_pagination(statement: &str, limit: usize, offset: usize) -> String {
@@ -1448,7 +1533,7 @@ mod tests {
     }
 
     #[test]
-    fn sqlserver_cte_pagination_plan_executes_original_sql() {
+    fn sqlserver_cte_first_page_pagination_plan_uses_page_sql() {
         let sql = ";WITH ranked AS (SELECT id FROM dbo.users) SELECT * FROM ranked".to_string();
         let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
             sql: sql.clone(),
@@ -1459,22 +1544,71 @@ mod tests {
             first_page_uses_actual_sql: false,
         });
 
-        assert_eq!(plan.sql_to_execute, sql);
-        assert!(plan.page_sql.is_none());
-        assert!(plan.count_sql.is_none());
-        assert_eq!(plan.page_limit, None);
-        assert_eq!(plan.page_offset, None);
+        assert_eq!(plan.sql_to_execute, "WITH ranked AS (SELECT id FROM dbo.users) SELECT TOP (100) * FROM ranked");
+        assert_eq!(plan.page_sql, Some(plan.sql_to_execute.clone()));
+        assert_eq!(
+            plan.count_sql,
+            Some(
+                "WITH ranked AS (SELECT id FROM dbo.users) SELECT COUNT(*) AS dbx_total_rows FROM (SELECT * FROM ranked) [dbx_count];"
+                    .to_string()
+            )
+        );
+        assert_eq!(plan.page_limit, Some(100));
+        assert_eq!(plan.page_offset, Some(0));
     }
 
     #[test]
-    fn sqlserver_cte_count_query_is_not_wrapped_as_derived_table() {
+    fn sqlserver_cte_later_page_pagination_plan_uses_row_number() {
+        let sql = ";WITH ranked AS (SELECT id FROM dbo.users) SELECT * FROM ranked".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql,
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 100, session_id: None },
+            use_agent_cursor: false,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(
+            plan.sql_to_execute,
+            "WITH ranked AS (SELECT id FROM dbo.users) SELECT * FROM (SELECT dbx_page_source.*, ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS [__dbx_row_num] FROM (SELECT * FROM ranked) dbx_page_source) dbx_page WHERE [__dbx_row_num] > 100 AND [__dbx_row_num] <= 200 ORDER BY [__dbx_row_num];"
+        );
+        assert_eq!(plan.page_sql, Some(plan.sql_to_execute.clone()));
+        assert_eq!(plan.page_limit, Some(100));
+        assert_eq!(plan.page_offset, Some(100));
+    }
+
+    #[test]
+    fn sqlserver_cte_agent_cursor_plan_is_not_short_circuited() {
+        let sql = ";WITH ranked AS (SELECT id FROM dbo.users) SELECT * FROM ranked".to_string();
+        let plan = build_query_pagination_execution_plan(QueryPaginationExecutionPlanOptions {
+            sql: sql.clone(),
+            query_base_sql: sql,
+            database_type: Some(DatabaseType::SqlServer),
+            pagination: QueryPagination { limit: 100, offset: 0, session_id: None },
+            use_agent_cursor: true,
+            first_page_uses_actual_sql: false,
+        });
+
+        assert_eq!(plan.sql_to_execute, ";WITH ranked AS (SELECT id FROM dbo.users) SELECT * FROM ranked");
+        assert!(plan.page_sql.is_none());
+        assert_eq!(plan.page_limit, Some(100));
+        assert_eq!(plan.page_offset, Some(0));
+        assert!(plan.use_agent_result_session);
+    }
+
+    #[test]
+    fn sqlserver_cte_count_query_keeps_with_clause_outside_derived_table() {
         let result = build_count_query_sql(CountQuerySqlOptions {
             original_sql: ";WITH cte AS (SELECT 1 AS id) SELECT * FROM cte".to_string(),
             database_type: Some(DatabaseType::SqlServer),
         });
 
-        assert!(!result.ok);
-        assert!(result.sql.is_none());
+        assert!(result.ok);
+        assert_eq!(
+            result.sql.unwrap(),
+            "WITH cte AS (SELECT 1 AS id) SELECT COUNT(*) AS dbx_total_rows FROM (SELECT * FROM cte) [dbx_count];"
+        );
     }
 
     #[test]

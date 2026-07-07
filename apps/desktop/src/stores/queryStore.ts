@@ -2397,7 +2397,7 @@ export const useQueryStore = defineStore("query", () => {
         // the Elasticsearch driver) already reports the true match total via
         // affected_rows. Use it directly so the result-grid can compute the
         // page count without issuing a separate COUNT query.
-        if (current.result && current.mode === "query" && typeof pageLimit === "number" && !countSql && typeof current.result.affected_rows === "number") {
+        if (current.result && current.mode === "query" && effectiveDbType === "elasticsearch" && typeof pageLimit === "number" && !countSql && typeof current.result.affected_rows === "number") {
           current.resultTotalRowCount = current.result.affected_rows;
           current.resultTotalRowCountLoading = false;
         }
