@@ -66,6 +66,15 @@ const emit = defineEmits<{
       whereInput?: string;
     },
   ];
+  openDiagramTarget: [
+    target: {
+      connectionId: string;
+      database: string;
+      schema?: string;
+      tableName: string;
+      tableType?: string;
+    },
+  ];
 }>();
 
 const { t } = useI18n();
@@ -143,6 +152,7 @@ watch(
     :prefill-database="dialogs.diagramPrefillDatabase.value"
     :prefill-schema="dialogs.diagramPrefillSchema.value"
     :focus-table-name="dialogs.diagramFocusTableName.value"
+    @open-target="emit('openDiagramTarget', $event)"
   />
   <TableImportDialog
     v-if="dialogs.showTableImportDialog.value"

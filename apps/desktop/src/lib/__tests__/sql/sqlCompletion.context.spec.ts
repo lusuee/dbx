@@ -243,6 +243,30 @@ describe("sqlCompletion scoped context classification", () => {
 
     expect(context.referencedTables).toEqual(expect.arrayContaining([expect.objectContaining({ name: "sq", alias: "sq", columns: ["id", "user_name"] })]));
   });
+
+  it("suggests columns for cross-database qualified table references", () => {
+    const sql = "SELECT * FROM current_orders WHERE reporting.orders.";
+    const context = getSqlCompletionContext(sql, sql.length);
+    const items = buildSqlCompletionItems(sql, sql.length, {
+      tables: [],
+      columnsByTable: new Map([
+        [
+          "reporting.orders",
+          [
+            { name: "id", table: "orders", schema: "reporting", dataType: "int" },
+            { name: "status", table: "orders", schema: "reporting", dataType: "varchar" },
+          ],
+        ],
+        ["archive.orders", [{ name: "archived_at", table: "orders", schema: "archive", dataType: "datetime" }]],
+      ]),
+    });
+
+    expect(context.qualifier).toBe("reporting.orders");
+    expect(context.qualifierParts).toEqual(["reporting", "orders"]);
+    expect(context.suggestColumns).toBe(true);
+    expect(items).toEqual(expect.arrayContaining([expect.objectContaining({ label: "id", type: "column" }), expect.objectContaining({ label: "status", type: "column" })]));
+    expect(items.some((item) => item.label === "archived_at")).toBe(false);
+  });
 });
 
 describe("sqlCompletion scoped metadata ranking", () => {
